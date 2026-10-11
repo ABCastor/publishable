@@ -63,6 +63,12 @@ case "$command_name" in
           usage
           exit 0
           ;;
+        --)
+          shift
+          [ "$#" -le 1 ] || { printf '%s\n' "ERROR: check accepts one repository path" >&2; usage >&2; exit 2; }
+          repo_input="${1:-$repo_input}"
+          break
+          ;;
         -*)
           printf 'ERROR: unknown check option: %s\n' "$1" >&2
           usage >&2

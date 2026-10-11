@@ -221,6 +221,8 @@ else
   bad "unborn repository is UNSCANNED with one summary" "$out"
 fi
 check "$T/does-not-exist"; [ "$rc" -eq 2 ] && has REPOSITORY not-a-repository && ok "not a repository exits 2" || bad "not a repository exits 2"
+out="$(cd "$T" && "$cli" check --format machine -- --help 2>&1)"; rc=$?
+[ "$rc" -eq 2 ] && has REPOSITORY not-a-repository && ok "a path after -- is a path, even --help" || bad "a path after -- is a path, even --help (rc=$rc)" "$out"
 
 # --- missing tools and rules -----------------------------------------------------------
 restricted_path() { # tool -> PATH without it
