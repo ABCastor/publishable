@@ -16,14 +16,14 @@ while [ -L "$source_path" ]; do
 done
 root_dir="$(CDPATH= cd -- "$(dirname -- "$source_path")/.." && pwd -P)"
 export PUBLISHABLE_CLI="${PUBLISHABLE_CLI:-${root_dir}/bin/publishable}"
-export PUBLISHABLE_ENGINE_ROOT="${PUBLISHABLE_ENGINE_ROOT:-$root_dir}"
+export PUBLISHABLE_ENGINE_ROOT="$root_dir"
 
 # shellcheck source=../lib/common.sh
 . "${root_dir}/lib/common.sh"
 
 usage() {
   printf '%s\n' "Usage:"
-  printf '%s\n' "  publishable check [path] [--format human|machine]"
+  printf '%s\n' "  publishable check [path] [--all-refs] [--format human|machine]"
   printf '%s\n' "  publishable init <name> [--lang python|node|rust|shell] [--dir <parent>] [--license mit|apache]"
 }
 
@@ -34,6 +34,7 @@ case "$command_name" in
 
     format=""
     repo_input=""
+    scope_args=()
     while [ "$#" -gt 0 ]; do
       case "$1" in
         --format)
@@ -47,6 +48,10 @@ case "$command_name" in
           ;;
         --format=*)
           format="${1#--format=}"
+          shift
+          ;;
+        --all-refs)
+          scope_args=(--all-refs)
           shift
           ;;
         -h|--help)
@@ -92,7 +97,7 @@ case "$command_name" in
 
     if [ "$format" = "machine" ]; then
       set +e
-      publishable_check "$repo_input"
+      publishable_check ${scope_args[@]+"${scope_args[@]}"} "$repo_input"
       check_rc=$?
       set -e
       exit "$check_rc"
@@ -104,7 +109,7 @@ case "$command_name" in
     trap 'rm -f "$report_path"' EXIT
 
     set +e
-    publishable_check "$repo_input" > "$report_path"
+    publishable_check ${scope_args[@]+"${scope_args[@]}"} "$repo_input" > "$report_path"
     check_rc=$?
     set -e
 

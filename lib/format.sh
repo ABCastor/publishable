@@ -34,10 +34,10 @@ publishable_render_human() {
     }
 
     function category(scope) {
-      if (index(scope, "history") == 1) {
+      if (index(scope, "history")) {
         return 2
       }
-      if (scope == "tree" || scope == "ignore") {
+      if (scope == "tree" || scope == "ignore" || scope == "worktree" || scope == "repository-config") {
         return 1
       }
       return 3

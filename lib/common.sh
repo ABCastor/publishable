@@ -30,6 +30,15 @@ publishable_unquote() {
   printf '%s' "$value"
 }
 
+# A leading ~ means the current $HOME, so one config works for every account that uses it.
+publishable_expand_home() {
+  case "$1" in
+    "~") printf '%s' "$HOME" ;;
+    \~/*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
+    *) printf '%s' "$1" ;;
+  esac
+}
+
 publishable_load_config() {
   local config_file="${1:-$(publishable_config_path)}"
   local raw_key raw_value key value
@@ -39,6 +48,13 @@ publishable_load_config() {
   PUBLISHABLE_CONFIG_GITHUB_HANDLE=""
   PUBLISHABLE_CONFIG_RULES_PATH=""
   PUBLISHABLE_CONFIG_RULES_READY=""
+  PUBLISHABLE_CONFIG_CHECKS_DIR=""
+  PUBLISHABLE_CONFIG_CODE_ROOTS=""
+  PUBLISHABLE_CONFIG_OWN_GITHUB_OWNERS=""
+  PUBLISHABLE_CONFIG_OWN_IDENTITY_PATTERN=""
+  PUBLISHABLE_CONFIG_TEST_PATH_RULES=""
+  PUBLISHABLE_CONFIG_EXEMPT_OWNER=""
+  PUBLISHABLE_CONFIG_EXEMPT_RULES=""
 
   [ -f "$config_file" ] || return 0
 
@@ -53,8 +69,15 @@ publishable_load_config() {
       author_name) PUBLISHABLE_CONFIG_AUTHOR_NAME="$value" ;;
       author_email) PUBLISHABLE_CONFIG_AUTHOR_EMAIL="$value" ;;
       github_handle) PUBLISHABLE_CONFIG_GITHUB_HANDLE="$value" ;;
-      rules_path) PUBLISHABLE_CONFIG_RULES_PATH="$value" ;;
+      rules_path) PUBLISHABLE_CONFIG_RULES_PATH="$(publishable_expand_home "$value")" ;;
       rules_ready) PUBLISHABLE_CONFIG_RULES_READY="$value" ;;
+      checks_dir) PUBLISHABLE_CONFIG_CHECKS_DIR="$(publishable_expand_home "$value")" ;;
+      code_roots) PUBLISHABLE_CONFIG_CODE_ROOTS="$value" ;;
+      own_github_owners) PUBLISHABLE_CONFIG_OWN_GITHUB_OWNERS="$value" ;;
+      own_identity_pattern) PUBLISHABLE_CONFIG_OWN_IDENTITY_PATTERN="$value" ;;
+      test_path_rules) PUBLISHABLE_CONFIG_TEST_PATH_RULES="$value" ;;
+      exempt_owner) PUBLISHABLE_CONFIG_EXEMPT_OWNER="$value" ;;
+      exempt_rules) PUBLISHABLE_CONFIG_EXEMPT_RULES="$value" ;;
       *)
         printf 'WARNING: ignoring unknown key %s in %s\n' "$key" "$config_file" >&2
         ;;
@@ -107,4 +130,25 @@ publishable_state_dir() {
 
 publishable_command_text() {
   printf '%s' "${PUBLISHABLE_CLI:-publishable}"
+}
+
+# SHA-256 of standard input, printed as "<hash>  -".
+publishable_sha256() {
+  if command -v shasum >/dev/null 2>&1; then
+    shasum -a 256
+  else
+    sha256sum
+  fi
+}
+
+# The engine's identity: one hash over every file under bin/ and lib/ of an installed engine.
+# A hook that trusts a stamp recomputes this the same way, so an edited engine cannot ride an
+# older clean result.
+publishable_engine_hash() {
+  (
+    cd "$1" || exit 1
+    find bin lib ! -type d -print | LC_ALL=C sort | while IFS= read -r file; do
+      printf '%s  %s\n' "$(publishable_sha256 < "$file" | awk '{print $1}')" "$file"
+    done
+  ) | publishable_sha256 | awk '{print $1}'
 }
