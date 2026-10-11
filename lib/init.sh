@@ -482,29 +482,6 @@ Copyright $year $author_name
 EOF
   }
 
-  write_adr() {
-    mkdir -p "$out_dir/docs/adr"
-    cat > "$out_dir/docs/adr/0001-record-architecture-decisions.md" <<'EOF'
-# Record architecture decisions
-
-## Status
-
-Accepted
-
-## Context
-
-Architecture choices need a durable record, but open work journals expose unfinished reasoning and private process.
-
-## Decision
-
-Record closed architecture decisions as ADRs using Status, Context, Decision, and Consequences. Keep plans, hand-offs, scratch notes, and deliberation outside the publishable repository.
-
-## Consequences
-
-Readers can recover why the architecture changed without inheriting the private process that led to the decision. Each later reversal needs a new ADR that supersedes the old one.
-EOF
-  }
-
   write_changes_log() {
     printf '%s\n' '# CHANGES.log · local hand-off journal · read the last entry before starting, append one when you finish.' > "$out_dir/CHANGES.log"
   }
@@ -855,7 +832,6 @@ EOF
   else
     write_apache_license
   fi
-  write_adr
   write_changes_log
   write_demo
 
