@@ -1,0 +1,113 @@
+#!/usr/bin/env bash
+set -euo pipefail
+umask 077
+
+config_file="${PUBLISHABLE_CONFIG_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/publishable/config}"
+configured_rules=""
+configured_ready=""
+
+if [ -f "$config_file" ]; then
+  while IFS='=' read -r raw_key raw_value; do
+    key="${raw_key#"${raw_key%%[![:space:]]*}"}"
+    key="${key%"${key##*[![:space:]]}"}"
+    value="${raw_value#"${raw_value%%[![:space:]]*}"}"
+    value="${value%"${value##*[![:space:]]}"}"
+    case "$value" in
+      \"*\") value="${value#\"}"; value="${value%\"}" ;;
+      \'*\') value="${value#\'}"; value="${value%\'}" ;;
+    esac
+    case "$key" in
+      rules_path) configured_rules="$value" ;;
+      rules_ready) configured_ready="$value" ;;
+    esac
+  done < "$config_file"
+fi
+
+if [ -n "$configured_rules" ]; then
+  personal_config="$configured_rules"
+elif [ -n "${PUBLISHABLE_RULES_PATH:-}" ]; then
+  personal_config="$PUBLISHABLE_RULES_PATH"
+else
+  personal_config="${XDG_CONFIG_HOME:-${HOME}/.config}/publishable/personal.toml"
+fi
+
+if [ -n "$configured_ready" ]; then
+  case "$configured_ready" in
+    true|TRUE|yes|YES|1) ;;
+    *)
+      printf '%s\n' "BLOCKED by publish-safety pre-commit: the local rules file still has starter status." >&2
+      printf 'Fix: replace every placeholder in %s, then set rules_ready=true in %s.\n' "$personal_config" "$config_file" >&2
+      printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+      exit 1
+      ;;
+  esac
+fi
+
+if ! command -v gitleaks >/dev/null 2>&1; then
+  printf '%s\n' "BLOCKED by publish-safety pre-commit: required scanner gitleaks is not on PATH." >&2
+  printf '%s\n' "Fix: install gitleaks from its official release or your operating system's package manager." >&2
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
+fi
+
+if [ ! -f "$personal_config" ]; then
+  printf '%s\n' "BLOCKED by publish-safety pre-commit: the local gitleaks config is missing." >&2
+  printf 'File: %s\n' "$personal_config" >&2
+  printf '%s\n' "Rule: scanner-configuration" >&2
+  printf 'Fix: create and customise %s, then rerun the commit.\n' "$personal_config" >&2
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
+fi
+
+repo="$(git rev-parse --show-toplevel 2>/dev/null || pwd -P)"
+report="$(mktemp "${TMPDIR:-/tmp}/publishable-pre-commit.XXXXXX")"
+trap 'rm -f "$report"' EXIT
+
+scan_rc=0
+gitleaks protect \
+  --staged \
+  --source "$repo" \
+  --config "$personal_config" \
+  --redact=100 \
+  --report-format json \
+  --report-path "$report" \
+  --no-banner \
+  --no-color \
+  --log-level error >/dev/null 2>&1 || scan_rc=$?
+
+if [ "$scan_rc" -eq 0 ]; then
+  exit 0
+fi
+
+if ! command -v jq >/dev/null 2>&1; then
+  if [ "$scan_rc" -eq 1 ]; then
+    printf '%s\n' "BLOCKED by publish-safety pre-commit: staged content contains one or more publish-sensitive values." >&2
+    printf '%s\n' "Detail is unavailable because jq is not installed; no secret value was printed." >&2
+    printf '%s\n' "Fix: install jq, then rerun the commit for per-finding remediation." >&2
+  else
+    printf '%s\n' "BLOCKED by publish-safety pre-commit: gitleaks failed before completing the scan." >&2
+    printf '%s\n' "Fix: check the scanner and local rules configuration, then rerun the commit." >&2
+  fi
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
+fi
+
+if [ "$scan_rc" -ne 1 ] || ! jq -e 'type == "array" and length > 0' "$report" >/dev/null 2>&1; then
+  printf '%s\n' "BLOCKED by publish-safety pre-commit: gitleaks failed before producing a valid finding report." >&2
+  printf '%s\n' "File: <scanner>" >&2
+  printf '%s\n' "Rule: scanner-error" >&2
+  printf 'Fix: gitleaks protect --staged --source %q --config %q --redact=100 --verbose\n' \
+    "$repo" "$personal_config" >&2
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
+fi
+
+printf '%s\n' "BLOCKED by publish-safety pre-commit: staged content contains publish-sensitive data." >&2
+while IFS=$'\t' read -r file line rule description; do
+  quoted_file="$(printf '%q' "$file")"
+  printf 'Finding: %s:%s [%s] %s\n' "$file" "$line" "$rule" "$description" >&2
+  printf 'Fix: git restore --staged -- %s && vi +%s -- %s && git add -- %s\n' \
+    "$quoted_file" "$line" "$quoted_file" "$quoted_file" >&2
+done < <(jq -r '.[] | [.File, (.StartLine | tostring), .RuleID, .Description] | @tsv' "$report")
+printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+exit 1

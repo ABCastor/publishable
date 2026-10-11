@@ -1,0 +1,14 @@
+.env
+.env.*
+!.env.example
+CHANGES.log
+STATE.md
+PLAN.md
+HANDOFF.md
+NOTES.md
+SCRATCH*
+.claude/
+.codex/
+.cursor/
+*.local.*
+demo/.work/

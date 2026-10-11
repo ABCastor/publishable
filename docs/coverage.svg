@@ -1,0 +1,116 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="830" height="700" viewBox="0 0 830 700" role="img" aria-labelledby="ttl dsc" font-family="-apple-system, BlinkMacSystemFont, 'Segoe UI', 'Noto Sans', Helvetica, Arial, sans-serif">
+<title id="ttl">What each layer can catch, and why the misses happen</title>
+<desc id="dsc">A grid. Four things that can leak out of a repository are set against the four layers that might stop them: the pre-commit hook and the pre-push hook, which publishable installs for you; GitHub push protection; and publishable check, the command you run yourself. Two rows above the grid describe the layers rather than the leaks. The first asks whether each runs without you: the hooks fire on every commit or every push, push protection on every push, and publishable check only when you remember. The second records how each is skipped: the two hooks with the no-verify flag, push protection by dismissing it, and publishable check by simply not running it. In the grid below, a green dot means the layer stops it and a red ring means it gets through, with the reason written underneath. An AWS or Stripe key is stopped by all four. A home path or a private host gets past push protection, because push protection knows key formats only. An agent's working note gets past both hooks, which have no check for it, and past push protection for the same key-formats reason. The same path already sitting in an older commit gets past both hooks because it is too far back for them, and past push protection again. publishable check is the only column that stops all four. A note records that on a first push pre-push is handed the whole history, and that a repository you are about to publish is long past that. The closing argument: every column here, publishable check included, only finds what someone wrote a pattern for. It just ships a check for those file names that the hooks do not, and reads further back. Nothing here catches a fact nobody described.</desc>
+
+<style>
+.m{font-family:ui-monospace,SFMono-Regular,'SF Mono',Menlo,Consolas,'DejaVu Sans Mono',monospace;font-variant-ligatures:none;font-feature-settings:"liga" 0,"calt" 0}
+</style>
+
+<rect x="0" y="0" width="830" height="700" rx="10" fill="#0d1117"/>
+
+<text x="30" y="42" font-size="22" font-weight="600" fill="#e6edf3">What each layer can catch</text>
+<text x="30" y="67" font-size="13.5" fill="#b4bdc7"><tspan class="m">publishable</tspan> is a command-line tool that checks a git repository for things you would not want public.</text>
+<text x="30" y="88" font-size="13.5" fill="#b4bdc7">Green dot: the layer stops it. Red ring: it gets through, reason underneath.</text>
+
+<text x="405" y="114" text-anchor="middle" font-size="13.5" fill="#b4bdc7">installed by publishable</text>
+<text x="590" y="114" text-anchor="middle" font-size="13.5" fill="#b4bdc7">GitHub's</text>
+<path d="M292 126V122H517V126" fill="none" stroke="#3d444d" stroke-width="1"/>
+
+<!-- ============ the four layers ============ -->
+<g text-anchor="middle" font-size="13.5" font-weight="600" fill="#e6edf3">
+  <text class="m" x="340" y="140">pre-commit</text>
+  <text class="m" x="468" y="140">pre-push</text>
+  <text x="590" y="140">push protection</text>
+  <text class="m" x="726" y="140" font-size="12.5" fill="#2ea4ac">publishable check</text>
+</g>
+
+<!-- two rows about the layers themselves, kept together and above the grid -->
+<rect x="30" y="152" width="770" height="64" rx="5" fill="#12181f"/>
+<g text-anchor="end" font-size="13.5" fill="#9aa4b0">
+  <text x="280" y="178">does it run without you?</text>
+  <text x="280" y="204">how you skip it</text>
+</g>
+<g text-anchor="middle" font-size="13.5" fill="#c3ccd6">
+  <text x="340" y="178">on every commit</text>
+  <text x="468" y="178">on every push</text>
+  <text x="590" y="178">on every push</text>
+  <text x="726" y="178" fill="#ff7b72">when you remember</text>
+</g>
+<g text-anchor="middle" font-size="13.5" fill="#b4bdc7">
+  <text class="m" x="340" y="204">--no-verify</text>
+  <text class="m" x="468" y="204">--no-verify</text>
+  <text x="590" y="204">dismiss it</text>
+  <text x="726" y="204">you don't run it</text>
+</g>
+
+<path d="M30 234H800" fill="none" stroke="#21262d" stroke-width="1"/>
+
+<text x="280" y="256" text-anchor="end" font-size="13.5" font-weight="600" fill="#c3ccd6">What could leak</text>
+
+<!-- ============ the grid ============ -->
+<g fill="#12181f">
+  <rect x="30" y="264" width="770" height="62" rx="5"/>
+  <rect x="30" y="332" width="770" height="62" rx="5"/>
+  <rect x="30" y="400" width="770" height="62" rx="5"/>
+</g>
+<rect x="30" y="468" width="770" height="66" rx="5" fill="#171d26"/>
+
+<path d="M656 130V534" fill="none" stroke="#262c34" stroke-width="1"/>
+
+<g text-anchor="end">
+  <g font-size="14" font-weight="600" fill="#e6edf3">
+    <text x="280" y="288">a provider key</text>
+    <text x="280" y="356">your home path</text>
+    <text x="280" y="424">an agent's working note</text>
+    <text x="280" y="494">that path, in an older commit</text>
+  </g>
+  <g font-size="13.5" fill="#b4bdc7">
+    <text x="280" y="306">a format scanners already know</text>
+    <text x="280" y="374"><tspan class="m">/Users/alice/</tspan>, or a private host</text>
+    <text x="280" y="442"><tspan class="m">HANDOFF.md</tspan>, <tspan class="m">CHANGES.log</tspan></text>
+    <text x="280" y="512">you deleted it, the commit stayed</text>
+  </g>
+</g>
+
+<!-- stops it -->
+<g fill="#3fb950">
+  <circle cx="340" cy="283" r="9"/><circle cx="468" cy="283" r="9"/>
+  <circle cx="590" cy="283" r="9"/><circle cx="726" cy="283" r="9"/>
+  <circle cx="340" cy="351" r="9"/><circle cx="468" cy="351" r="9"/>
+  <circle cx="726" cy="351" r="9"/>
+  <circle cx="726" cy="419" r="9"/>
+  <circle cx="726" cy="489" r="9"/>
+</g>
+
+<!-- gets through, with the reason under it -->
+<g fill="none" stroke="#ff7b72" stroke-width="2.25">
+  <circle cx="590" cy="351" r="8"/>
+  <circle cx="340" cy="419" r="8"/><circle cx="468" cy="419" r="8"/><circle cx="590" cy="419" r="8"/>
+  <circle cx="340" cy="489" r="8"/><circle cx="468" cy="489" r="8"/><circle cx="590" cy="489" r="8"/>
+</g>
+
+<g text-anchor="middle" font-size="13.5" fill="#b4bdc7">
+  <text x="590" y="377">key formats only</text>
+  <text x="340" y="445">no check for it</text>
+  <text x="468" y="445">no check for it</text>
+  <text x="590" y="445">key formats only</text>
+  <text x="340" y="515">too far back</text>
+  <text x="468" y="515">too far back <tspan fill="#adb6c0">*</tspan></text>
+  <text x="590" y="515">key formats only</text>
+</g>
+
+<g font-size="14" fill="#b4bdc7">
+  <text x="30" y="566"><tspan fill="#adb6c0">*</tspan> Except on a first push, when <tspan class="m">pre-push</tspan> is handed the whole history.</text>
+  <text x="30" y="585">A repository you are about to publish is long past that.</text>
+</g>
+
+<path d="M30 606H800" fill="none" stroke="#21262d" stroke-width="1"/>
+
+<!-- ============ the point ============ -->
+
+<g font-size="14" fill="#c3ccd6">
+  <text x="30" y="632">Every column here, <tspan class="m">publishable check</tspan> included, only finds what someone wrote a pattern for.</text>
+  <text x="30" y="653">It just ships a check for those file names that the hooks do not, and reads further back.</text>
+  <text x="30" y="674">Nothing here catches a fact nobody described.</text>
+</g>
+</svg>

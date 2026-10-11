@@ -1,0 +1,68 @@
+name: checks
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  shell:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Syntax
+        run: for f in bin/publishable lib/*.sh hooks/pre-commit hooks/pre-push install.sh demo/setup.sh; do bash -n "$f"; done
+      - name: ShellCheck
+        run: shellcheck -x bin/publishable lib/*.sh hooks/pre-commit hooks/pre-push install.sh demo/setup.sh
+
+  behaviour:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Install gitleaks
+        run: |
+          curl -sSL "https://github.com/gitleaks/gitleaks/releases/download/v8.30.1/gitleaks_8.30.1_linux_x64.tar.gz" | tar -xz gitleaks
+          sudo mv gitleaks /usr/local/bin/
+          gitleaks version
+      - name: Build the demo fixture
+        run: ./demo/setup.sh "$RUNNER_TEMP/fixture"
+      - name: It finds the planted leak in history
+        run: |
+          set +e
+          out="$(PUBLISHABLE_CONFIG_FILE="$RUNNER_TEMP/fixture/config" ./bin/publishable check "$RUNNER_TEMP/fixture/my-app" --format machine)"
+          rc=$?
+          set -e
+          printf '%s\n' "$out"
+          [ "$rc" -eq 1 ] || { echo "expected exit 1 on findings, got $rc"; exit 1; }
+          n="$(printf '%s\n' "$out" | grep -c '^BLOCKING|section=PERSONAL_DATA')"
+          [ "$n" -eq 2 ] || { echo "expected 2 history findings, got $n"; exit 1; }
+      - name: It refuses to report clean on a repository with no commits
+        run: |
+          set +e
+          mkdir -p "$RUNNER_TEMP/unborn" && git -C "$RUNNER_TEMP/unborn" init -q
+          out="$(PUBLISHABLE_CONFIG_FILE="$RUNNER_TEMP/fixture/config" ./bin/publishable check "$RUNNER_TEMP/unborn")"
+          set -e
+          printf '%s\n' "$out"
+          printf '%s\n' "$out" | grep -q 'UNSCANNED' || { echo "unborn repo must report UNSCANNED"; exit 1; }
+      - name: It never ships a person
+        # This repository is the tool's own dogfood, so it must not carry anyone's real
+        # values. The check is deliberately generic rather than a list of the author's
+        # strings: naming them here would itself ship them, which is the mistake the
+        # whole project is about.
+        run: |
+          fail=0
+
+          # Absolute home paths, other than the documented placeholders.
+          if grep -rIn --exclude-dir=.git -E '/(Users|home)/[A-Za-z0-9._-]+' . \
+              | grep -vE '/(Users|home)/(YOURNAME|alice|runner)\b' ; then
+            echo "::error::a real absolute home path is present"; fail=1
+          fi
+
+          # Email addresses, other than reserved example domains and GitHub noreply.
+          if grep -rIn --exclude-dir=.git -E '[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}' . \
+              | grep -vE '(^|[^A-Za-z0-9._%+-])git@github\.com' \
+              | grep -vE '@(example\.(com|org|net|internal)|users\.noreply\.github\.com)' ; then
+            echo "::error::a real-looking email address is present"; fail=1
+          fi
+
+          [ "$fail" -eq 0 ] && echo "engine carries no personal values"
+          exit "$fail"

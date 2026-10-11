@@ -1,0 +1,132 @@
+#!/usr/bin/env bash
+set -euo pipefail
+
+# `publishable check . | head` closes the pipe early. Bash's default SIGPIPE handling turns
+# that into a "write error: Broken pipe" message, which is noise, not a failure.
+trap 'exit 0' PIPE
+
+source_path="${BASH_SOURCE[0]}"
+while [ -L "$source_path" ]; do
+  source_dir="$(CDPATH= cd -- "$(dirname -- "$source_path")" && pwd -P)"
+  link_target="$(readlink "$source_path")"
+  case "$link_target" in
+    /*) source_path="$link_target" ;;
+    *) source_path="${source_dir}/${link_target}" ;;
+  esac
+done
+root_dir="$(CDPATH= cd -- "$(dirname -- "$source_path")/.." && pwd -P)"
+export PUBLISHABLE_CLI="${PUBLISHABLE_CLI:-${root_dir}/bin/publishable}"
+export PUBLISHABLE_ENGINE_ROOT="${PUBLISHABLE_ENGINE_ROOT:-$root_dir}"
+
+# shellcheck source=../lib/common.sh
+. "${root_dir}/lib/common.sh"
+
+usage() {
+  printf '%s\n' "Usage:"
+  printf '%s\n' "  publishable check [path] [--format human|machine]"
+  printf '%s\n' "  publishable init <name> [--lang python|node|rust|shell] [--dir <parent>] [--license mit|apache]"
+}
+
+command_name="${1:-}"
+case "$command_name" in
+  check)
+    shift
+
+    format=""
+    repo_input=""
+    while [ "$#" -gt 0 ]; do
+      case "$1" in
+        --format)
+          if [ "$#" -lt 2 ]; then
+            printf '%s\n' "ERROR: --format needs human or machine" >&2
+            usage >&2
+            exit 2
+          fi
+          format="$2"
+          shift 2
+          ;;
+        --format=*)
+          format="${1#--format=}"
+          shift
+          ;;
+        -h|--help)
+          usage
+          exit 0
+          ;;
+        -*)
+          printf 'ERROR: unknown check option: %s\n' "$1" >&2
+          usage >&2
+          exit 2
+          ;;
+        *)
+          if [ -n "$repo_input" ]; then
+            printf '%s\n' "ERROR: check accepts one repository path" >&2
+            usage >&2
+            exit 2
+          fi
+          repo_input="$1"
+          shift
+          ;;
+      esac
+    done
+
+    case "$format" in
+      human|machine) ;;
+      '')
+        if [ -t 1 ]; then
+          format="human"
+        else
+          format="machine"
+        fi
+        ;;
+      *)
+        printf 'ERROR: unknown format: %s\n' "$format" >&2
+        usage >&2
+        exit 2
+        ;;
+    esac
+
+    repo_input="${repo_input:-$PWD}"
+    # shellcheck source=../lib/check.sh
+    . "${root_dir}/lib/check.sh"
+
+    if [ "$format" = "machine" ]; then
+      set +e
+      publishable_check "$repo_input"
+      check_rc=$?
+      set -e
+      exit "$check_rc"
+    fi
+
+    # shellcheck source=../lib/format.sh
+    . "${root_dir}/lib/format.sh"
+    report_path="$(mktemp "${TMPDIR:-/tmp}/publishable-report.XXXXXX")"
+    trap 'rm -f "$report_path"' EXIT
+
+    set +e
+    publishable_check "$repo_input" > "$report_path"
+    check_rc=$?
+    set -e
+
+    use_color=0
+    if [ -t 1 ] && [ -z "${NO_COLOR+x}" ]; then
+      use_color=1
+    fi
+    publishable_render_human "$report_path" "$check_rc" "$use_color"
+    exit "$check_rc"
+    ;;
+  init)
+    shift
+    # shellcheck source=../lib/init.sh
+    . "${root_dir}/lib/init.sh"
+    publishable_init "$@"
+    ;;
+  -h|--help|'')
+    usage
+    ;;
+  *)
+    printf 'ERROR: unknown command: %s\n' "$command_name" >&2
+    usage >&2
+    exit 2
+    ;;
+esac

@@ -1,0 +1,81 @@
+title = "Personal publish-safety rules"
+
+[extend]
+useDefault = true
+
+[[rules]]
+id = "personal-absolute-home-path"
+description = "Replace this absolute home path with $HOME, ~, or a runtime-configured path before publishing."
+regex = '''/Users/YOURNAME(?:/|[[:space:]]|["'`]|$)'''
+keywords = ["/Users/YOURNAME"]
+
+[[rules]]
+id = "personal-email"
+description = "Replace the personal email address with a documented placeholder or runtime configuration before publishing."
+regex = '''(?i)\byou@example\.com\b'''
+keywords = ["you@example.com"]
+
+[[rules]]
+id = "personal-primary-name"
+description = "Replace the person's real name with a role, neutral example name, or runtime profile value before publishing."
+regex = '''\bExample[[:space:]]+Person\b'''
+keywords = ["Example", "Person"]
+
+[rules.allowlist]
+description = "Legal attribution is public content: a copyright holder's real name belongs in LICENSE/COPYING/NOTICE."
+paths = ['''(^|/)(LICENSE|LICENCE|COPYING|NOTICE)([._-][^/]*)?$''']
+
+[[rules]]
+id = "personal-account-identifier"
+description = "Replace this identifying account string with a neutral placeholder or runtime profile value before publishing."
+regex = '''(?i)\bexample-user\b'''
+keywords = ["example-user"]
+
+[rules.allowlist]
+description = "Legal attribution is public content: a copyright holder's real name belongs in LICENSE/COPYING/NOTICE."
+paths = ['''(^|/)(LICENSE|LICENCE|COPYING|NOTICE)([._-][^/]*)?$''']
+
+[[rules]]
+id = "personal-collaborator-name"
+description = "Replace a collaborator's real name with a role or neutral example name before publishing."
+regex = '''(?i)\bSample[[:space:]]+Collaborator\b'''
+keywords = ["Sample", "Collaborator"]
+
+[rules.allowlist]
+description = "Legal attribution is public content: a copyright holder's real name belongs in LICENSE/COPYING/NOTICE."
+paths = ['''(^|/)(LICENSE|LICENCE|COPYING|NOTICE)([._-][^/]*)?$''']
+
+[[rules]]
+id = "personal-private-host"
+description = "Replace the private host address with a runtime-configured host or documented placeholder before publishing."
+regex = '''\b10\.0\.0\.1\b'''
+keywords = ["10.0.0.1"]
+
+[[rules]]
+id = "personal-google-file-id-url"
+description = "Remove the live Google Sheet or Drive URL and replace its file ID with runtime configuration or a fake example ID."
+regex = '''(?:https?://)?(?:docs\.google\.com/spreadsheets/d/|drive\.google\.com/(?:file/d/|drive/(?:u/[0-9]+/)?folders/|open\?id=))([A-Za-z0-9_-]{25,})'''
+secretGroup = 1
+keywords = ["docs.google.com", "drive.google.com"]
+
+[[rules]]
+id = "personal-ai-attribution"
+description = "Remove AI authorship attribution and keep the human author solely responsible for the published artifact."
+regex = '''(?i)(?:Co-Authored-By:[^\r\n]{0,120}Clau[d]e|Generated[[:space:]]+with[[:space:]]+Clau[d]e|Author[[:space:]]+of[[:space:]]+this[[:space:]]+doc:[[:space:]]*Clau[d]e)'''
+keywords = ["Clau", "clau"]
+
+# These paths intentionally suppress all rules. They are non-shipping examples,
+# dependencies, vendored code, or this rule file itself.
+[[allowlists]]
+description = "Ignore non-shipping examples, dependencies, vendored code, and this configuration file."
+paths = [
+  '''(?:^|/)\.env\.example$''',
+  '''(?:^|/)[^/]*\.env\.example$''',
+  '''(?:^|/)[^/]*\.example\.[^/]+$''',
+  '''(?:^|/)(?:test|tests|fixtures)(?:/|$)''',
+  '''(?:^|/)node_modules(?:/|$)''',
+  '''(?:^|/)\.venv(?:/|$)''',
+  '''(?:^|/)(?:vendor|vendored|third_party|third-party)(?:/|$)''',
+  '''(?:^|/)(?:\.config/gitleaks/)?personal\.toml$''',
+  '''(?:^|/)personal\.toml\.example$''',
+]

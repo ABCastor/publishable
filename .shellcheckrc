@@ -1,0 +1,10 @@
+# Follow sourced files so cross-file definitions resolve. CI passes -x for the same reason.
+source-path=SCRIPTDIR
+
+# SC1007: `CDPATH= cd -- ...` sets CDPATH to empty for one command. ShellCheck reads the
+#         space as a typo'd assignment; it is the intended and portable idiom.
+# SC2034: config variables are assigned in lib/common.sh and read in lib/init.sh. They are
+#         genuinely used, just not within the file that defines them.
+# SC2031: repo path resolution happens inside command substitution by design; the value is
+#         captured from stdout, not expected to survive the subshell.
+disable=SC1007,SC2034,SC2031
