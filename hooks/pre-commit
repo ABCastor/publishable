@@ -2,45 +2,25 @@
 set -euo pipefail
 umask 077
 
-config_file="${PUBLISHABLE_CONFIG_FILE:-${XDG_CONFIG_HOME:-${HOME}/.config}/publishable/config}"
-configured_rules=""
-configured_ready=""
-
-if [ -f "$config_file" ]; then
-  while IFS='=' read -r raw_key raw_value; do
-    key="${raw_key#"${raw_key%%[![:space:]]*}"}"
-    key="${key%"${key##*[![:space:]]}"}"
-    value="${raw_value#"${raw_value%%[![:space:]]*}"}"
-    value="${value%"${value##*[![:space:]]}"}"
-    case "$value" in
-      \"*\") value="${value#\"}"; value="${value%\"}" ;;
-      \'*\') value="${value#\'}"; value="${value%\'}" ;;
-    esac
-    case "$key" in
-      rules_path) configured_rules="$value" ;;
-      rules_ready) configured_ready="$value" ;;
-    esac
-  done < "$config_file"
+# The installed engine owns config parsing, so this hook and `publishable check` read the
+# same settings the same way.
+engine_home="${PUBLISHABLE_HOME:-${XDG_DATA_HOME:-${HOME}/.local/share}/publishable/current}"
+if [ ! -f "$engine_home/lib/common.sh" ]; then
+  printf '%s\n' "BLOCKED by publish-safety pre-commit: Publishable is not installed." >&2
+  printf 'Fix: run install.sh from a Publishable checkout (expected %s).\n' "$engine_home" >&2
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
 fi
+# shellcheck source=../lib/common.sh
+. "$engine_home/lib/common.sh"
+config_file="$(publishable_config_path)"
+personal_config="$(publishable_rules_path)"
 
-if [ -n "$configured_rules" ]; then
-  personal_config="$configured_rules"
-elif [ -n "${PUBLISHABLE_RULES_PATH:-}" ]; then
-  personal_config="$PUBLISHABLE_RULES_PATH"
-else
-  personal_config="${XDG_CONFIG_HOME:-${HOME}/.config}/publishable/personal.toml"
-fi
-
-if [ -n "$configured_ready" ]; then
-  case "$configured_ready" in
-    true|TRUE|yes|YES|1) ;;
-    *)
-      printf '%s\n' "BLOCKED by publish-safety pre-commit: the local rules file still has starter status." >&2
-      printf 'Fix: replace every placeholder in %s, then set rules_ready=true in %s.\n' "$personal_config" "$config_file" >&2
-      printf '%s\n' "Deliberate override: git commit --no-verify" >&2
-      exit 1
-      ;;
-  esac
+if ! publishable_rules_are_ready; then
+  printf '%s\n' "BLOCKED by publish-safety pre-commit: the local rules file still has starter status." >&2
+  printf 'Fix: replace every placeholder in %s, then set rules_ready=true in %s.\n' "$personal_config" "$config_file" >&2
+  printf '%s\n' "Deliberate override: git commit --no-verify" >&2
+  exit 1
 fi
 
 if ! command -v gitleaks >/dev/null 2>&1; then

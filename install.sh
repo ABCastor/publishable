@@ -15,6 +15,12 @@ config_dir="${config_home}/publishable"
 config_file="${config_dir}/config"
 rules_file="${config_dir}/personal.toml"
 install_status=0
+engine_only=0
+case "${1:-}" in
+  --engine-only) engine_only=1 ;;
+  '') ;;
+  *) printf 'Usage: %s [--engine-only]\n' "$0" >&2; exit 2 ;;
+esac
 
 if ! command -v git >/dev/null 2>&1; then
   printf '%s\n' "ERROR: git is required but is not on PATH." >&2
@@ -27,12 +33,15 @@ if ! command -v gitleaks >/dev/null 2>&1; then
 fi
 
 if ! command -v jq >/dev/null 2>&1; then
-  printf '%s\n' "NOTICE: jq is unavailable. Scans still block safely, but per-finding remediation is reduced."
+  printf '%s\n' "NOTICE: jq is unavailable. publishable check blocks until it is installed."
 fi
 
 if ! command -v gh >/dev/null 2>&1; then
   printf '%s\n' "NOTICE: gh is unavailable. Local checks work; GitHub description verification will be skipped."
 fi
+
+# shellcheck source=lib/common.sh
+. "${root_dir}/lib/common.sh"
 
 install_file() {
   local source_file="$1" destination_file="$2" mode="$3"
@@ -45,48 +54,65 @@ install_file() {
   fi
 }
 
-install_hook() {
-  local hook_name="$1"
-  local source_file="${root_dir}/hooks/${hook_name}"
-  local destination_file="${template_dir}/hooks/${hook_name}"
-  local backup_file
-
-  mkdir -p "${template_dir}/hooks"
-  if [ -f "$destination_file" ] && cmp -s "$source_file" "$destination_file"; then
-    printf 'UNCHANGED: %s\n' "$destination_file"
-    return 0
+# Each engine version installs into its own read-only folder and is never edited in place, so a
+# caller can pin one folder and its hash. `current` points at the newest install.
+if git -C "$root_dir" rev-parse --verify HEAD >/dev/null 2>&1 \
+    && [ -z "$(git -C "$root_dir" status --porcelain -- bin lib)" ]; then
+  engine_id="$(git -C "$root_dir" rev-parse --short=12 HEAD)"
+else
+  engine_id="local-$(publishable_engine_hash "$root_dir" | cut -c1-12)"
+fi
+engine_dir="${install_root}/engines/${engine_id}"
+source_hash="$(publishable_engine_hash "$root_dir")"
+if [ -d "$engine_dir" ]; then
+  if [ "$(publishable_engine_hash "$engine_dir")" = "$source_hash" ]; then
+    printf 'UNCHANGED: %s\n' "$engine_dir"
+  else
+    printf 'ERROR: %s exists with different content; move it aside and rerun.\n' "$engine_dir" >&2
+    exit 1
   fi
-
-  if [ -e "$destination_file" ] || [ -L "$destination_file" ]; then
-    backup_file="${destination_file}.before-publishable.$(date +%Y%m%d%H%M%S)"
-    cp -p "$destination_file" "$backup_file"
-    printf 'CHANGED: backed up existing hook to %s\n' "$backup_file"
-  fi
-
-  install -m 0755 "$source_file" "$destination_file"
-  printf 'CHANGED: installed %s\n' "$destination_file"
-}
-
-install_file "${root_dir}/bin/publishable" "${install_root}/bin/publishable" 0755
-install_file "${root_dir}/lib/common.sh" "${install_root}/lib/common.sh" 0644
-install_file "${root_dir}/lib/check.sh" "${install_root}/lib/check.sh" 0644
-install_file "${root_dir}/lib/init.sh" "${install_root}/lib/init.sh" 0644
-install_file "${root_dir}/personal.toml.example" "${install_root}/personal.toml.example" 0644
+else
+  mkdir -p "${install_root}/engines"
+  staging="$(mktemp -d "${install_root}/engines/.install.XXXXXX")"
+  cp -R "${root_dir}/bin" "${root_dir}/lib" "$staging/"
+  chmod -R a-w "$staging/bin" "$staging/lib"
+  chmod 0755 "$staging"
+  mv "$staging" "$engine_dir"
+  printf 'CHANGED: installed %s\n' "$engine_dir"
+fi
+[ "$engine_only" -eq 1 ] || ln -sfn "engines/${engine_id}" "${install_root}/current"
+[ "$engine_only" -eq 1 ] || install_file "${root_dir}/personal.toml.example" "${install_root}/personal.toml.example" 0644
+printf 'ENGINE: %s\n' "$engine_dir"
+printf 'ENGINE_SHA256: %s\n' "$source_hash"
+[ "$engine_only" -eq 0 ] || exit 0
 
 mkdir -p "$bin_dir"
-if [ -L "$bin_link" ] && [ "$(readlink "$bin_link")" = "${install_root}/bin/publishable" ]; then
+if [ -L "$bin_link" ] && [ "$(readlink "$bin_link")" = "${install_root}/current/bin/publishable" ]; then
   printf 'UNCHANGED: %s\n' "$bin_link"
 elif [ -e "$bin_link" ] || [ -L "$bin_link" ]; then
   printf 'UNCHANGED: %s already exists and was not clobbered.\n' "$bin_link" >&2
-  printf 'ACTION: move it aside, then link %s to %s.\n' "$bin_link" "${install_root}/bin/publishable" >&2
+  printf 'ACTION: move it aside, then link %s to %s.\n' "$bin_link" "${install_root}/current/bin/publishable" >&2
   install_status=1
 else
-  ln -s "${install_root}/bin/publishable" "$bin_link"
-  printf 'CHANGED: linked %s -> %s\n' "$bin_link" "${install_root}/bin/publishable"
+  ln -s "${install_root}/current/bin/publishable" "$bin_link"
+  printf 'CHANGED: linked %s -> %s\n' "$bin_link" "${install_root}/current/bin/publishable"
 fi
 
-install_hook "pre-commit"
-install_hook "pre-push"
+# The pre-commit hook goes into the git template only when the template has none: an existing
+# hook belongs to the user and is never replaced.
+hook_source="${root_dir}/hooks/pre-commit"
+hook_destination="${template_dir}/hooks/pre-commit"
+mkdir -p "${template_dir}/hooks"
+if [ -f "$hook_destination" ] && cmp -s "$hook_source" "$hook_destination"; then
+  printf 'UNCHANGED: %s\n' "$hook_destination"
+elif [ -e "$hook_destination" ] || [ -L "$hook_destination" ]; then
+  printf 'UNCHANGED: %s already exists and was not replaced.\n' "$hook_destination" >&2
+  printf 'ACTION: to add the Publishable scan, run %s from your hook.\n' "$hook_source" >&2
+  install_status=1
+else
+  install -m 0755 "$hook_source" "$hook_destination"
+  printf 'CHANGED: installed %s\n' "$hook_destination"
+fi
 
 mkdir -p "$config_dir"
 chmod 700 "$config_dir" 2>/dev/null || true
@@ -130,5 +156,5 @@ else
   install_status=1
 fi
 
-printf '%s\n' "Install complete. New repositories inherit the template hooks only when init.templateDir points to the installed template."
+printf '%s\n' "Install complete. New repositories inherit the template hook only when init.templateDir points to the installed template."
 exit "$install_status"
