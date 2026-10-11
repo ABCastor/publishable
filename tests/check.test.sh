@@ -249,6 +249,31 @@ printf '#!/usr/bin/env bash\necho "AUDIT: CLEAN"\n' > "$T/checks.d/house.sh"
 check "$repo"; want_block "a local check printing anything else blocks" PUBLISH_BASICS local-check-failed
 rm -f "$T/checks.d/house.sh"
 
+# --- configuration and environment cannot switch a check off ---------------------------
+mkfix hardening
+mkdir -p "$repo/tests"; printf 'author = "Example Person"\n' > "$repo/tests/test_a.py"; commit_all "Tests"
+write_config "test_path_rules=["
+check "$repo"; want_block "an invalid test_path_rules pattern blocks instead of dropping findings" SECRETS identity-test-scan-error
+write_config "exempt_owner=example-org" "exempt_rules=github-pat personal-primary-name"
+mkfix exempt-secret
+printf 'token = "%s"\n' "$tok" > "$repo/settings.txt"; commit_all "Settings"
+check "$repo"; want_block "an exemption never covers a secret rule" SECRETS github-pat
+write_config
+mkdir -p "$T/checks.d"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "BLOCKING|section=PUBLISH_BASICS|scope=tree|file=x|line=n/a|commit=HEAD|rule=always|description=Fixture.\n"' > "$T/checks.d/always.sh"
+mkfix globs
+out="$(env SHELLOPTS=noglob "$cli" check --format machine "$repo" 2>&1)"; rc=$?
+want_block "an inherited noglob still runs local checks" PUBLISH_BASICS always
+rm -f "$T/checks.d/always.sh"
+mkfix noglob-lineage
+git -c init.templateDir= init -q "$T/code/noglob-lineage-data"
+out="$(env SHELLOPTS=noglob "$cli" check --format machine "$repo" 2>&1)"; rc=$?
+want_block "an inherited noglob still finds a private-data sibling" PERSONAL_DATA private-data-lineage-without-denylist
+mkfix upstream-conflict
+g config publish-audit.publicUpstream example-user/product
+g config publishable.publicUpstream someone/else
+check "$repo"; want_block "two different publicUpstream declarations block" REPOSITORY public-upstream-conflict
+
 # --- human report ----------------------------------------------------------------------
 mkfix human
 printf 'x\n' > "$repo/CLAUDE.md"; commit_all "Record"

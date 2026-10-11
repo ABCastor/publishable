@@ -5,6 +5,9 @@
 
 publishable_check() (
   set -euo pipefail
+  # Inherited shell settings must not change which files a glob finds (local checks, lineage).
+  set +f
+  unset GLOBIGNORE
   umask 077
 
   local all_refs=0 repo_input=""
@@ -258,8 +261,16 @@ publishable_check() (
   local -a history_revs=("$history_revision")
   local history_logopts="$history_revision"
   local public_upstream_slug upstream_head="" upstream_owner upstream_meta upstream_name upstream_branch
-  public_upstream_slug="$(git -C "$repo" config --get publishable.publicUpstream 2>/dev/null \
-    || git -C "$repo" config --get publish-audit.publicUpstream 2>/dev/null || true)"
+  local upstream_native upstream_legacy
+  upstream_native="$(git -C "$repo" config --get publishable.publicUpstream 2>/dev/null || true)"
+  upstream_legacy="$(git -C "$repo" config --get publish-audit.publicUpstream 2>/dev/null || true)"
+  if [ -n "$upstream_native" ] && [ -n "$upstream_legacy" ] && [ "$upstream_native" != "$upstream_legacy" ]; then
+    emit_blocking "REPOSITORY" "history" "<publicUpstream>" "n/a" "n/a" \
+      "public-upstream-conflict" "publishable.publicUpstream and publish-audit.publicUpstream name different upstreams; keep one."
+    printf '%s\n' "AUDIT: 1 BLOCKING, 0 WARNINGS"
+    exit 1
+  fi
+  public_upstream_slug="${upstream_native:-$upstream_legacy}"
   if [ -n "$public_upstream_slug" ]; then
     upstream_owner="${public_upstream_slug%%/*}"
     local own_owner owner_is_ours=0
@@ -380,8 +391,10 @@ publishable_check() (
     fi
   fi
 
+  # Only identity rules can be exempted, never a secret.
   is_exempt_rule() {
     [ "$exempt_repo" -eq 1 ] || return 1
+    case "$1" in personal-*) ;; *) return 1 ;; esac
     case " $exempt_rules " in
       *" $1 "*) return 0 ;;
     esac
@@ -472,13 +485,20 @@ publishable_check() (
         --redact=100 --report-format json --report-path "$identity_report" \
         --no-banner --no-color --log-level error || identity_rc=$?
     fi
-    if { [ "$identity_rc" -eq 0 ] || [ "$identity_rc" -eq 1 ]; } && jq -e 'type == "array"' "$identity_report" >/dev/null 2>&1 \
-        && jq -e 'type == "array"' "$gitleaks_report" >/dev/null 2>&1; then
-      jq -s --arg rules "$test_path_rules" '.[0] + [.[1][] | select(
-          (.RuleID | test($rules)) and
-          (.File | test("(^|/)(test|tests|fixtures)(/|$)|(^|/)[^/]*\\.example\\.[^/]+$|\\.env\\.example$")))]' \
-        "$gitleaks_report" "$identity_report" > "${identity_report}.merged" && mv -f "${identity_report}.merged" "$gitleaks_report"
-    elif [ "$scan_rc" -eq 0 ] || [ "$scan_rc" -eq 1 ]; then
+    # Merge only when both reports are valid and the filter itself succeeds; anything else blocks.
+    if [ "$identity_rc" -eq 0 ] || [ "$identity_rc" -eq 1 ]; then
+      if jq -e 'type == "array"' "$identity_report" >/dev/null 2>&1 \
+          && jq -e 'type == "array"' "$gitleaks_report" >/dev/null 2>&1 \
+          && jq -s --arg rules "$test_path_rules" '.[0] + [.[1][] | select(
+            (.RuleID | test($rules)) and
+            (.File | test("(^|/)(test|tests|fixtures)(/|$)|(^|/)[^/]*\\.example\\.[^/]+$|\\.env\\.example$")))]' \
+            "$gitleaks_report" "$identity_report" > "${identity_report}.merged" 2>/dev/null; then
+        mv -f "${identity_report}.merged" "$gitleaks_report"
+      else
+        identity_rc=98
+      fi
+    fi
+    if [ "$identity_rc" -ne 0 ] && [ "$identity_rc" -ne 1 ] && { [ "$scan_rc" -eq 0 ] || [ "$scan_rc" -eq 1 ]; }; then
       secrets_blocking=$((secrets_blocking + 1))
       blocking_total=$((blocking_total + 1))
       emit_blocking "SECRETS" "scanner" "<identity-test-pass>" "n/a" "n/a" "identity-test-scan-error" \
