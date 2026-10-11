@@ -117,6 +117,17 @@ g remote add other "https://github.com/someone-else/exempt.git"
 check "$repo"; want_block "one foreign remote keeps the rule blocking" PERSONAL_DATA personal-primary-name
 write_config
 
+write_config "exempt_owner=example-org" "exempt_rules=personal-primary-name" 'exempt_readme_line_pattern=link-profile\.svg'
+mkfix readme-row "https://github.com/someone-else/readme-row.git"
+printf '# Fixture\n\n<a href="https://example.com/p"><img src="docs/link-profile.svg"> Example Person</a>\n' > "$repo/README.md"; commit_all "Row"
+check "$repo"; want_clean "an exempt rule passes on a README line matching the line pattern, on any remote"
+printf 'By Example Person.\n' >> "$repo/README.md"; commit_all "Prose"
+check "$repo"; want_block "the same rule on another README line blocks" PERSONAL_DATA personal-primary-name
+mkfix readme-row-elsewhere "https://github.com/someone-else/readme-row-elsewhere.git"
+printf '<img src="docs/link-profile.svg"> Example Person\n' > "$repo/NOTES.md"; commit_all "Notes"
+check "$repo"; want_block "the line pattern applies to README files only" PERSONAL_DATA personal-primary-name
+write_config
+
 # --- process files and internal records ------------------------------------------------
 mkfix records
 mkdir -p "$repo/docs/adr" "$repo/.claude"

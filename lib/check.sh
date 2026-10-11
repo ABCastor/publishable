@@ -34,6 +34,7 @@ publishable_check() (
   local own_identity_re="${PUBLISHABLE_CONFIG_OWN_IDENTITY_PATTERN:-(?!)}"
   local exempt_owner="$PUBLISHABLE_CONFIG_EXEMPT_OWNER"
   local exempt_rules="$PUBLISHABLE_CONFIG_EXEMPT_RULES"
+  local exempt_readme_line="$PUBLISHABLE_CONFIG_EXEMPT_README_LINE_PATTERN"
   local checks_dir="${PUBLISHABLE_CONFIG_CHECKS_DIR:-${config_file%/*}/checks.d}"
   local code_roots_raw="${PUBLISHABLE_CODE_ROOTS:-$PUBLISHABLE_CONFIG_CODE_ROOTS}"
 
@@ -369,7 +370,8 @@ publishable_check() (
 
   # Findings of exempt_rules are allowed when every GitHub remote belongs to exempt_owner
   # (for example a person's name on their own organisation's repositories). One remote under
-  # any other owner keeps them blocking.
+  # any other owner keeps them blocking. On any repository they are also allowed on a README
+  # line matching exempt_readme_line_pattern (for example a standard link row).
   local exempt_repo=0 github_remote_count=0 foreign_remote=0 owner
   if [ -n "$exempt_owner" ] && [ -n "$exempt_rules" ]; then
     while IFS= read -r remote; do
@@ -390,14 +392,19 @@ publishable_check() (
     fi
   fi
 
-  # Only identity rules can be exempted, never a secret.
+  # Only identity rules can be exempted, never a secret. Arguments: rule [file line commit].
   is_exempt_rule() {
-    [ "$exempt_repo" -eq 1 ] || return 1
+    local file="${2:-}" line="${3:-}" commit="${4:-}"
     case "$1" in personal-*) ;; *) return 1 ;; esac
     case " $exempt_rules " in
-      *" $1 "*) return 0 ;;
+      *" $1 "*) ;;
+      *) return 1 ;;
     esac
-    return 1
+    [ "$exempt_repo" -eq 1 ] && return 0
+    [ -n "$exempt_readme_line" ] || return 1
+    case "${file##*/}" in README.md|readme.md) ;; *) return 1 ;; esac
+    [[ "$line" =~ ^[0-9]+$ ]] && [ -n "$commit" ] || return 1
+    git -C "$repo" show "$commit:$file" 2>/dev/null | sed -n "${line}p" | grep -Eq -- "$exempt_readme_line"
   }
 
   # Rules named personal-* in the rules file describe the user's own identifiers; any other
@@ -518,7 +525,7 @@ publishable_check() (
         && jq -e 'type == "array"' "$gitleaks_report" >/dev/null 2>&1; then
       while IFS=$'\t' read -r file line commit rule description; do
         [ -n "$rule" ] || continue
-        if is_exempt_rule "$rule"; then
+        if is_exempt_rule "$rule" "$file" "$line" "$commit"; then
           continue
         elif is_personal_rule "$rule"; then
           personal_blocking=$((personal_blocking + 1))
@@ -658,7 +665,7 @@ publishable_check() (
     while IFS=$'\t' read -r file line commit rule description; do
       [ -n "$rule" ] || continue
       is_personal_rule "$rule" || continue
-      if is_exempt_rule "$rule"; then
+      if is_exempt_rule "$rule" "$file" "$line" "$commit"; then
         printf 'INFO|section=PERSONAL_DATA|file=%s|rule=%s|status=allowed-by-owner-exemption\n' \
           "$(sanitize_field "$file")" "$(sanitize_field "$rule")"
         continue

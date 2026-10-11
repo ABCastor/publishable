@@ -52,6 +52,7 @@ publishable_load_config() {
   PUBLISHABLE_CONFIG_TEST_PATH_RULES=""
   PUBLISHABLE_CONFIG_EXEMPT_OWNER=""
   PUBLISHABLE_CONFIG_EXEMPT_RULES=""
+  PUBLISHABLE_CONFIG_EXEMPT_README_LINE_PATTERN=""
 
   [ -f "$config_file" ] || return 0
 
@@ -75,6 +76,7 @@ publishable_load_config() {
       test_path_rules) PUBLISHABLE_CONFIG_TEST_PATH_RULES="$value" ;;
       exempt_owner) PUBLISHABLE_CONFIG_EXEMPT_OWNER="$value" ;;
       exempt_rules) PUBLISHABLE_CONFIG_EXEMPT_RULES="$value" ;;
+      exempt_readme_line_pattern) PUBLISHABLE_CONFIG_EXEMPT_README_LINE_PATTERN="$value" ;;
       *)
         printf 'WARNING: ignoring unknown key %s in %s\n' "$key" "$config_file" >&2
         ;;
