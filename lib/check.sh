@@ -20,13 +20,12 @@ publishable_check() (
   done
   repo_input="${repo_input:-$PWD}"
 
-  local config_file personal_config state_dir engine_root command_text
+  local config_file personal_config state_dir engine_root
   config_file="$(publishable_config_path)"
   personal_config="$(publishable_rules_path)"
   publishable_load_config "$config_file"
   state_dir="$(publishable_state_dir)"
   engine_root="${PUBLISHABLE_ENGINE_ROOT:?}"
-  command_text="$(publishable_command_text)"
 
   local expected_name="$PUBLISHABLE_CONFIG_AUTHOR_NAME"
   local expected_email="$PUBLISHABLE_CONFIG_AUTHOR_EMAIL"
@@ -80,7 +79,7 @@ publishable_check() (
     emit_blocking "REPOSITORY" "input" "$repo_input" "n/a" "n/a" "not-a-repository" \
       "Choose a valid Git work tree before running the publish audit."
     emit_remediation "REPOSITORY" "$repo_input" "Run the audit against a Git repository." \
-      "$command_text check /absolute/path/to/repository"
+      "$(publishable_check_command) /absolute/path/to/repository"
     printf '%s\n' "== SUMMARY =="
     printf '%s\n' "SUMMARY|section=REPOSITORY|blocking=1|warnings=0"
     printf '%s\n' "AUDIT: 1 BLOCKING, 0 WARNINGS"
@@ -453,6 +452,15 @@ publishable_check() (
       "The local rules file still has starter status, so personal-data coverage is not proven."
     emit_remediation "SECRETS" "$personal_config" "Replace every placeholder, then mark the local policy ready." \
       "Set rules_ready=true in $config_file"
+  fi
+
+  # A pattern jq cannot compile would only fail once a finding reaches it; test it up front.
+  if [ "$scan_available" -eq 1 ] && ! jq -n --arg rules "$test_path_rules" '"" | test($rules)' >/dev/null 2>&1; then
+    scan_available=0
+    secrets_blocking=$((secrets_blocking + 1))
+    blocking_total=$((blocking_total + 1))
+    emit_blocking "SECRETS" "config" "$config_file" "n/a" "n/a" "invalid-test-path-rules" \
+      "test_path_rules is not a valid regular expression, so identity findings in test paths cannot be kept."
   fi
 
   local scan_rc identity_config identity_report identity_rc

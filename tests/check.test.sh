@@ -254,6 +254,14 @@ mkfix hardening
 mkdir -p "$repo/tests"; printf 'author = "Example Person"\n' > "$repo/tests/test_a.py"; commit_all "Tests"
 write_config "test_path_rules=["
 check "$repo"; want_block "an invalid test_path_rules pattern blocks instead of dropping findings" SECRETS identity-test-scan-error
+mkfix hardening-empty
+write_config "test_path_rules=["
+check "$repo"; want_block "an invalid test_path_rules pattern blocks even with nothing found" SECRETS invalid-test-path-rules
+mkfix tilde-list
+g config publishable.denylist "~nosuchuser-list/denylist"
+mkdir -p "$T/cwd/~nosuchuser-list"; printf '# empty\n' > "$T/cwd/~nosuchuser-list/denylist"
+out="$(cd "$T/cwd" && "$cli" check --format machine "$repo" 2>&1)"; rc=$?
+want_block "a ~name denylist path resolves under HOME, never the working folder" PERSONAL_DATA configured-denylist-unreadable
 write_config "exempt_owner=example-org" "exempt_rules=github-pat personal-primary-name"
 mkfix exempt-secret
 printf 'token = "%s"\n' "$tok" > "$repo/settings.txt"; commit_all "Settings"

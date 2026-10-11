@@ -30,13 +30,10 @@ publishable_unquote() {
   printf '%s' "$value"
 }
 
-# A leading ~ means the current $HOME, so one config works for every account that uses it.
+# A leading ~ stands for $HOME, so one config works for every account that uses it. It is
+# replaced as written ("~name" becomes "$HOMEname"), never resolved against the working folder.
 publishable_expand_home() {
-  case "$1" in
-    "~") printf '%s' "$HOME" ;;
-    \~/*) printf '%s/%s' "$HOME" "${1#\~/}" ;;
-    *) printf '%s' "$1" ;;
-  esac
+  printf '%s' "${1/#\~/$HOME}"
 }
 
 publishable_load_config() {
@@ -130,6 +127,11 @@ publishable_state_dir() {
 
 publishable_command_text() {
   printf '%s' "${PUBLISHABLE_CLI:-publishable}"
+}
+
+# The command a remediation line tells the user to run for a fresh check.
+publishable_check_command() {
+  printf '%s' "${PUBLISHABLE_CHECK_COMMAND:-$(publishable_command_text) check}"
 }
 
 # SHA-256 of standard input, printed as "<hash>  -".
