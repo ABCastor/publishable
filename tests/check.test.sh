@@ -253,7 +253,7 @@ rm -f "$T/checks.d/house.sh"
 mkfix hardening
 mkdir -p "$repo/tests"; printf 'author = "Example Person"\n' > "$repo/tests/test_a.py"; commit_all "Tests"
 write_config "test_path_rules=["
-check "$repo"; want_block "an invalid test_path_rules pattern blocks instead of dropping findings" SECRETS identity-test-scan-error
+check "$repo"; want_block "an invalid test_path_rules pattern blocks instead of dropping findings" SECRETS invalid-test-path-rules
 mkfix hardening-empty
 write_config "test_path_rules=["
 check "$repo"; want_block "an invalid test_path_rules pattern blocks even with nothing found" SECRETS invalid-test-path-rules
