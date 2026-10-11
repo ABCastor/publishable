@@ -273,6 +273,36 @@ g config publishable.denylist "~nosuchuser-list/denylist"
 mkdir -p "$T/cwd/~nosuchuser-list"; printf '# empty\n' > "$T/cwd/~nosuchuser-list/denylist"
 out="$(cd "$T/cwd" && "$cli" check --format machine "$repo" 2>&1)"; rc=$?
 want_block "a ~name denylist path resolves under HOME, never the working folder" PERSONAL_DATA configured-denylist-unreadable
+# A multi-line keyword list mentioning "example" keeps every keyword in the test-path pass.
+write_config
+mkfix keywords
+cat >> "$rules" <<'TOML'
+
+[[rules]]
+id = "personal-contact"
+description = "Replace the contact address."
+regex = '''contact@example\.org'''
+keywords = [
+  "contact@example.org",
+  "zzzz-not-in-the-file",
+]
+TOML
+mkdir -p "$repo/tests"; printf 'to = "contact@example.org"\n' > "$repo/tests/test_mail.py"; commit_all "Mail"
+check "$repo"; want_block "a keyword mentioning example survives the test-path pass" PERSONAL_DATA personal-contact
+cp "$root/personal.toml.example" "$rules"
+# A one-line allowlist for example files cannot be removed, so the pass blocks.
+mkfix example-line
+printf '\n[[allowlists]]\ndescription = "one-line"\npaths = ["(?:^|/)[^/]*[.]example[.][^/]+$"]\n' >> "$rules"
+printf 'author = "Example Person"\n' > "$repo/settings.example.py"; commit_all "Example"
+check "$repo"; want_block "an unremovable example-path allowlist blocks" SECRETS identity-test-scan-error
+cp "$root/personal.toml.example" "$rules"
+# An exported shell function named like a command cannot skip a local check.
+mkdir -p "$T/checks.d"
+printf '%s\n' '#!/usr/bin/env bash' 'printf "BLOCKING|section=PUBLISH_BASICS|scope=tree|file=x|line=n/a|commit=HEAD|rule=always|description=Fixture.\n"' > "$T/checks.d/always.sh"
+mkfix exported-function
+out="$(env 'BASH_FUNC_bash%%=() { :; }' "$cli" check --format machine "$repo" 2>&1)"; rc=$?
+want_block "an exported bash function cannot skip local checks" PUBLISH_BASICS always
+rm -f "$T/checks.d/always.sh"
 write_config "exempt_owner=example-org" "exempt_rules=github-pat personal-primary-name"
 mkfix exempt-secret
 printf 'token = "%s"\n' "$tok" > "$repo/settings.txt"; commit_all "Settings"

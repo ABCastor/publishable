@@ -486,14 +486,28 @@ publishable_check() (
 
     # Identity pass over test, fixture and example paths. A rules file usually allowlists those
     # paths for every rule, which suits fake keys and hides real names and emails. Re-scan with
-    # every allowlisted path pattern that mentions tests, fixtures or examples removed, and keep
-    # only identity findings (test_path_rules) on exactly those paths, so nothing counts twice.
-    # If such a pattern survives the removal (for example a one-line list), the pass blocks.
+    # every entry of a multi-line `paths = [` list that mentions tests, fixtures or examples
+    # removed (nothing outside such lists is touched), and keep only identity findings
+    # (test_path_rules) on exactly those paths, so nothing counts twice. If such an entry
+    # shares a line with the list's brackets, it cannot be removed safely and the pass blocks.
     identity_config="$(mktemp "${TMPDIR:-/tmp}/publishable-identity.XXXXXX")"
     identity_report="$(mktemp "${TMPDIR:-/tmp}/publishable-identity-report.XXXXXX")"
-    perl -ne 'print unless /^\s*(?:\x27\x27\x27|"|\x27)/ && /test|fixture|example/i' "$personal_config" > "$identity_config"
     identity_rc=0
-    if perl -ne '$bad = 1 if /^\s*(?:paths\s*=\s*\[\s*)?(?:\x27\x27\x27|"|\x27)/ && /test|fixture/i; END { exit($bad ? 0 : 1) }' "$identity_config"; then
+    if ! perl -ne '
+        BEGIN { $in = 0; $bad = 0 }
+        my $mention = /test|fixture|example/i;
+        my $closes = /\]\s*,?\s*$/;
+        if (!$in && /^\s*paths\s*=\s*\[/) {
+          $bad = 1 if $mention;
+          $in = 1 unless $closes;
+          print; next;
+        }
+        if ($in) {
+          if ($closes) { $in = 0; $bad = 1 if $mention; print; next }
+          next if $mention;
+        }
+        print;
+        END { exit($bad || $in ? 3 : 0) }' "$personal_config" > "$identity_config"; then
       identity_rc=99
     else
       gitleaks detect --source "$repo" --log-opts="$history_logopts --diff-merges=remerge --" --config "$identity_config" \
@@ -1001,7 +1015,7 @@ publishable_check() (
       add_input "$plugin"
       plugin_rc=0
       plugin_out="$(PUBLISHABLE_REPO="$repo" PUBLISHABLE_TRACKED_PATHS="$tracked_paths" \
-        PUBLISHABLE_HISTORY_SCOPE="$history_revision" bash "$plugin" 2>/dev/null)" || plugin_rc=$?
+        PUBLISHABLE_HISTORY_SCOPE="$history_revision" BASH_ENV='' ENV='' "$BASH" "$plugin" 2>/dev/null)" || plugin_rc=$?
       while IFS= read -r plugin_line; do
         [ -n "$plugin_line" ] || continue
         if [[ "$plugin_line" =~ ^(BLOCKING|WARNING|REMEDIATION|INFO)\|section=([A-Z_]+)\| ]]; then

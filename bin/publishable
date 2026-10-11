@@ -1,6 +1,11 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
+# Shell functions imported from the environment could stand in for any command this tool runs.
+while IFS= read -r inherited_function; do
+  unset -f "$inherited_function"
+done < <(compgen -A function)
+
 # `publishable check . | head` closes the pipe early. Bash's default SIGPIPE handling turns
 # that into a "write error: Broken pipe" message, which is noise, not a failure.
 trap 'exit 0' PIPE
