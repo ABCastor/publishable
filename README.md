@@ -96,4 +96,4 @@ For a hosted scanner with a dashboard and verified secrets, use [GitGuardian](ht
 
 MIT, see [LICENSE](LICENSE).
 
-<p><a href="https://abcastor.com"><img src="docs/castor-footer.svg" width="350" alt="Chip, the Castor beaver, by Castor, we give a dam"></a></p>
+<p><a href="https://abcastor.com"><img src="docs/castor-footer.svg" width="350" alt="Chip, the Castor beaver, Castor, we give a dam"></a></p>
