@@ -35,6 +35,7 @@ publishable_check() (
   local exempt_owner="$PUBLISHABLE_CONFIG_EXEMPT_OWNER"
   local exempt_rules="$PUBLISHABLE_CONFIG_EXEMPT_RULES"
   local exempt_readme_line="$PUBLISHABLE_CONFIG_EXEMPT_README_LINE_PATTERN"
+  local exempt_identities="$PUBLISHABLE_CONFIG_EXEMPT_IDENTITIES"
   local checks_dir="${PUBLISHABLE_CONFIG_CHECKS_DIR:-${config_file%/*}/checks.d}"
   local code_roots_raw="${PUBLISHABLE_CODE_ROOTS:-$PUBLISHABLE_CONFIG_CODE_ROOTS}"
 
@@ -373,7 +374,7 @@ publishable_check() (
   # any other owner keeps them blocking. On any repository they are also allowed on a README
   # line matching exempt_readme_line_pattern (for example a standard link row).
   local exempt_repo=0 github_remote_count=0 foreign_remote=0 owner
-  if [ -n "$exempt_owner" ] && [ -n "$exempt_rules" ]; then
+  if [ -n "$exempt_owner" ] && { [ -n "$exempt_rules" ] || [ -n "$exempt_identities" ]; }; then
     while IFS= read -r remote; do
       remote_url="$(git -C "$repo" remote get-url "$remote" 2>/dev/null || true)"
       case "$remote_url" in
@@ -858,8 +859,27 @@ publishable_check() (
         "git -C \"$repo\" config user.name \"$expected_name\" && git -C \"$repo\" config user.email \"$expected_email\""
     fi
 
+    # exempt_identities: further "Name <email>" identities, separated by ";", that may author and
+    # commit on a repository whose every GitHub remote belongs to exempt_owner (for example the
+    # co-founders of that organisation). Anywhere else only the configured identity is accepted.
+    is_exempt_identity() { # name email
+      [ "$exempt_repo" -eq 1 ] && [ -n "$exempt_identities" ] || return 1
+      local wanted="$1 <$2>" entry
+      while IFS= read -r entry; do
+        entry="$(publishable_trim "$entry")"
+        [ -n "$entry" ] && [ "$entry" = "$wanted" ] && return 0
+      done < <(printf '%s\n' "$exempt_identities" | tr ';' '\n')
+      return 1
+    }
+    is_public_identity() { # name email
+      if [ "$1" = "$expected_name" ] && [ "$2" = "$expected_email" ]; then return 0; fi
+      is_exempt_identity "$1" "$2"
+    }
     while IFS=$'\t' read -r commit author email committer committer_email; do
       [ -n "$commit" ] || continue
+      if is_public_identity "$author" "$email" && is_public_identity "$committer" "$committer_email"; then
+        continue
+      fi
       if { [ -n "$expected_name" ] && { [ "$author" != "$expected_name" ] || [ "$committer" != "$expected_name" ]; }; } \
           || { [ -n "$expected_email" ] && { [ "$email" != "$expected_email" ] || [ "$committer_email" != "$expected_email" ]; }; }; then
         attribution_blocking=$((attribution_blocking + 1))

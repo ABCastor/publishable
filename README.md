@@ -96,6 +96,7 @@ A repository with a sibling named `<name>-data`, `<name>-private` or `<name>-pri
 | `code_roots` | Folders searched for `-data` siblings, separated by `:`. Default: the repository's parent folder. |
 | `test_path_rules` | Rule ids re-checked inside test and example paths. Default: `^personal-`. |
 | `exempt_owner`, `exempt_rules` | Rules allowed when every GitHub remote belongs to that owner, for example your own name on your own organisation's repositories. One remote elsewhere and they block again. |
+| `exempt_identities` | Further commit identities, `Name <email>` separated by `;`, that may author and commit when every GitHub remote belongs to `exempt_owner`, for example a co-founder on your shared organisation's repositories. Name and email must both match; anywhere else only `author_name` and `author_email` are accepted. |
 | `own_identity_pattern` | A regular expression for your identities, used by `publicUpstream` below. |
 | `checks_dir` | Your own checks. Default: `checks.d` next to the config. |
 

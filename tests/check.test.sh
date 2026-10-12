@@ -128,6 +128,19 @@ printf '<img src="docs/link-profile.svg"> Example Person\n' > "$repo/NOTES.md"; 
 check "$repo"; want_block "the line pattern applies to README files only" PERSONAL_DATA personal-primary-name
 write_config
 
+write_config "exempt_owner=example-org" "exempt_identities=Co Founder <co@example.org>"
+mkfix cofounder
+printf 'more\n' >> "$repo/app.py"; g add -A
+g -c user.name="Co Founder" -c user.email="co@example.org" commit -qm "Co-founder change"
+check "$repo"; want_clean "an exempt identity may author on a repo whose every remote is the exempt owner"
+g remote add other "https://github.com/someone-else/cofounder.git"
+check "$repo"; want_block "one foreign remote keeps an exempt identity blocking" AI_ATTRIBUTION public-author-identity-mismatch
+mkfix cofounder-wrong-email
+printf 'more\n' >> "$repo/app.py"; g add -A
+g -c user.name="Co Founder" -c user.email="other@example.org" commit -qm "Same name, other email"
+check "$repo"; want_block "an exempt identity must match name and email" AI_ATTRIBUTION public-author-identity-mismatch
+write_config
+
 # --- process files and internal records ------------------------------------------------
 mkfix records
 mkdir -p "$repo/docs/adr" "$repo/.claude"
