@@ -141,6 +141,97 @@ g -c user.name="Co Founder" -c user.email="other@example.org" commit -qm "Same n
 check "$repo"; want_block "an exempt identity must match name and email" AI_ATTRIBUTION public-author-identity-mismatch
 write_config
 
+# BR-PUB-HUMAN
+# Incoming history is actually pushed and fetched, not simulated with hand-written refs.
+mk_incoming() {
+  local name="$1" bare="$T/$1.git" base="${2:-main}"
+  git -c init.templateDir= init -q --bare -b main "$bare"
+  mkfix "$name" "$bare"
+  g push -q -u origin "main:$base"
+  peer="$T/$name-peer"
+  git -c init.templateDir= clone -q -b "$base" "$bare" "$peer"
+  git -C "$peer" config core.hooksPath /dev/null
+  git -C "$peer" config commit.gpgsign false
+  git -C "$peer" config user.name "Other Human"
+  git -C "$peer" config user.email "human@example.org"
+  git -C "$peer" checkout -q -b contribution
+}
+fetch_incoming() {
+  git -C "$peer" push -q origin contribution
+  g fetch -q origin
+  g merge -q --no-ff origin/contribution -m "Merge contribution"
+}
+
+# --- fetched human authorship ----------------------------------------------------------
+# BR-PUB-HUMAN
+mk_incoming incoming-human
+printf 'human change\n' > "$peer/human.txt"
+git -C "$peer" add -A; git -C "$peer" commit -qm "Human change"
+human_sha="$(git -C "$peer" rev-parse HEAD)"
+human_metadata="$(git -C "$peer" show -s --format='%an <%ae> / %cn <%ce>' HEAD)"
+printf 'web merge\n' > "$peer/web.txt"
+git -C "$peer" add -A
+GIT_COMMITTER_NAME="GitHub" GIT_COMMITTER_EMAIL="noreply@users.noreply.github.com" git -C "$peer" commit -qm "Web merge"
+web_sha="$(git -C "$peer" rev-parse HEAD)"
+web_metadata="$(git -C "$peer" show -s --format='%an <%ae> / %cn <%ce>' HEAD)"
+fetch_incoming
+check "$repo"; want_clean "fetched humans outside the tracked upstream retain authorship"
+check --all-refs "$repo"; want_clean "--all-refs preserves fetched humans and GitHub web committers"
+if g merge-base --is-ancestor "$human_sha" HEAD && g merge-base --is-ancestor "$web_sha" HEAD \
+    && [ "$(g show -s --format='%an <%ae> / %cn <%ce>' "$human_sha")" = "$human_metadata" ] \
+    && [ "$(g show -s --format='%an <%ae> / %cn <%ce>' "$web_sha")" = "$web_metadata" ]; then
+  ok "incoming commit hashes and author/committer metadata are unchanged"
+else
+  bad "incoming commit hashes and author/committer metadata are unchanged"
+fi
+g config user.email other@example.com
+check "$repo"; want_block "fetched humans do not exempt the local configured identity" AI_ATTRIBUTION public-author-config-mismatch
+g config user.email "$EMAIL"
+printf 'local change\n' > "$repo/local.txt"; g add -A
+g -c user.name="Other Human" -c user.email="human@example.org" commit -qm "Local wrong author"
+check "$repo"; want_block "a new local wrong author after incoming humans still blocks" AI_ATTRIBUTION public-author-identity-mismatch
+check --all-refs "$repo"; want_block "--all-refs still blocks a new local wrong author" AI_ATTRIBUTION public-author-identity-mismatch
+
+# BR-PUB-HUMAN
+mk_incoming incoming-no-default base
+printf 'human change\n' > "$peer/human.txt"
+git -C "$peer" add -A; git -C "$peer" commit -qm "Human change"
+fetch_incoming
+g branch --unset-upstream
+check "$repo"; want_clean "fetched humans pass without an upstream or remote default branch"
+printf 'local change\n' > "$repo/local.txt"; g add -A
+g -c user.name="Other Human" -c user.email="human@example.org" commit -qm "Local wrong author"
+check "$repo"; want_block "remote subtraction with --not still catches a new local wrong author" AI_ATTRIBUTION public-author-identity-mismatch
+
+# BR-PUB-HUMAN
+for incoming_ai in Clau""de Codex; do
+  mk_incoming "incoming-$incoming_ai"
+  printf 'AI change\n' > "$peer/ai.txt"; git -C "$peer" add -A
+  GIT_AUTHOR_NAME="$incoming_ai" GIT_AUTHOR_EMAIL="ai@example.org" git -C "$peer" commit -qm "AI change"
+  fetch_incoming
+  check "$repo"; want_block "fetched $incoming_ai author still blocks" AI_ATTRIBUTION ai-author-identity
+  check --all-refs "$repo"; want_block "--all-refs still blocks fetched $incoming_ai author" AI_ATTRIBUTION ai-author-identity
+done
+
+# BR-PUB-HUMAN
+mk_incoming incoming-secret
+incoming_tok="ghp_$(LC_ALL=C tr -dc 'A-Za-z0-9' </dev/urandom | head -c 36)"
+printf 'token = "%s"\n' "$incoming_tok" > "$peer/settings.txt"
+git -C "$peer" add -A; git -C "$peer" commit -qm "Add secret"
+git -C "$peer" rm -q settings.txt; git -C "$peer" commit -qm "Remove secret"
+fetch_incoming
+check "$repo"; want_block "a deleted secret inherited from a fetched human still blocks" SECRETS github-pat
+check --all-refs "$repo"; want_block "--all-refs still scans inherited human secrets" SECRETS github-pat
+
+# BR-PUB-HUMAN
+mk_incoming incoming-record
+printf 'record\n' > "$peer/CLAUDE.md"
+git -C "$peer" add -A; git -C "$peer" commit -qm "Add record"
+git -C "$peer" rm -q CLAUDE.md; git -C "$peer" commit -qm "Remove record"
+fetch_incoming
+check "$repo"; want_block "human authorship exemption does not narrow the record scan" PROCESS_REVEAL internal-record-in-history
+check --all-refs "$repo"; want_block "--all-refs still scans fetched human records" PROCESS_REVEAL internal-record-in-history
+
 # --- process files and internal records ------------------------------------------------
 mkfix records
 mkdir -p "$repo/docs/adr" "$repo/.claude"

@@ -94,22 +94,23 @@ publishable_check() (
 
   # History scope. The default judges exactly what `git push <remote> HEAD` exposes: HEAD's
   # ancestry, never unrelated local refs. Content scans cover that whole ancestry, published
-  # commits included; identity and internal-record checks cover the unpublished range only
+  # commits included; internal-record checks cover the unpublished range only
   # (against the upstream, else the remote default branch, else every remote-tracking ref).
-  # --all-refs widens everything to every ref, for a first or full publication.
+  # --all-refs widens scans to every ref, for a first or full publication. The configured
+  # author check separately excludes all known remote ancestry, preserving incoming humans.
   local history_revision="HEAD"
   local -a identity_revisions=(HEAD)
   local identity_upstream ref remote branch identity_base
   local -a remote_refs=()
+  while IFS= read -r ref; do
+    [ -n "$ref" ] && remote_refs+=("$ref")
+  done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/)
   if [ "$all_refs" -eq 1 ]; then
     history_revision="--all"
     identity_revisions=(--all)
   elif identity_upstream="$(git -C "$repo" rev-parse --symbolic-full-name '@{upstream}' 2>/dev/null)"; then
     identity_revisions=("${identity_upstream}..HEAD")
   else
-    while IFS= read -r ref; do
-      [ -n "$ref" ] && remote_refs+=("$ref")
-    done < <(git -C "$repo" for-each-ref --format='%(refname)' refs/remotes/)
     if [ "${#remote_refs[@]}" -gt 0 ]; then
       identity_base=""
       for remote in origin $(git -C "$repo" remote); do
@@ -844,7 +845,17 @@ publishable_check() (
 
   printf '%s\n' "== SECTION 4: AI_ATTRIBUTION =="
   # The public commit identity (author_name, author_email in the config): the repository's
-  # local config and every unpublished commit, author and committer, must use it exactly.
+  # local config and locally unpublished commits, author and committer, must use it exactly.
+  # BR-PUB-HUMAN
+  # Exclude known remote ancestry only here; record, payload and AI scans keep their ranges.
+  # Put ^ref exclusions before existing revisions so a later --not cannot invert them.
+  local -a author_revisions=()
+  if [ "${#remote_refs[@]}" -gt 0 ]; then
+    for ref in "${remote_refs[@]}"; do
+      author_revisions+=("^$ref")
+    done
+  fi
+  author_revisions+=("${identity_revisions[@]}")
   local configured_name configured_email author email committer committer_email commit
   if [ -n "$expected_name" ] || [ -n "$expected_email" ]; then
     configured_name="$(git -C "$repo" config --local --get user.name 2>/dev/null || true)"
@@ -889,7 +900,7 @@ publishable_check() (
         emit_remediation "AI_ATTRIBUTION" "<commit-identity>" "Correct the commit identity before publishing." \
           "git -C \"$repo\" commit --amend --no-edit --author=\"$expected_name <$expected_email>\""
       fi
-    done < <(git -C "$repo" log "${identity_revisions[@]}" --format='%H%x09%an%x09%ae%x09%cn%x09%ce' -- 2>/dev/null || true)
+    done < <(git -C "$repo" log "${author_revisions[@]}" --format='%H%x09%an%x09%ae%x09%cn%x09%ce' -- 2>/dev/null || true)
   else
     printf '%s\n' "INFO|section=AI_ATTRIBUTION|public_identity=not-configured"
   fi

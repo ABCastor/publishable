@@ -53,7 +53,7 @@ A repository with no commits reports `history UNSCANNED`. There is nothing to sc
 - Internal records: agent instructions such as `CLAUDE.md`, decision records under `adr/` or `decisions/`, lessons, build ledgers and drafts, in the tree and in commits not yet published.
 - Currency figures and long opaque IDs inside a hand-off log, tracked or not.
 - Terms from a denylist, in tracked files and in history (see below).
-- Commits whose author or committer differs from your configured public identity, and any AI vendor named as author or committer.
+- Locally unpublished commits whose author or committer differs from your configured public identity. Human commits already reachable from fetched remote branches retain their authorship, including GitHub web committers. AI vendors named as author or committer block throughout the history in scope, including fetched commits.
 - AI co-authorship lines in commit messages or files.
 - A tracked `.env` or key file, or no ignore rule for `.env`.
 - A shallow clone, replacement refs or grafts, because a rewritten graph cannot prove anything about history.
@@ -91,7 +91,7 @@ A repository with a sibling named `<name>-data`, `<name>-private` or `<name>-pri
 | Key | Effect |
 |---|---|
 | `rules_path`, `rules_ready` | The rules file, and whether you have replaced its placeholders. |
-| `author_name`, `author_email` | Your public commit identity. When set, the repository's local config and every unpublished commit must match it. |
+| `author_name`, `author_email` | Your public commit identity. When set, the repository's local config and every locally unpublished commit must match it. Commits reachable from known remote-tracking refs keep their authorship, also with `--all-refs`; secret, content, internal-record and AI attribution checks keep their own scan ranges. |
 | `github_handle`, `own_github_owners` | Owners treated as yours. Default: `github_handle`. |
 | `code_roots` | Folders searched for `-data` siblings, separated by `:`. Default: the repository's parent folder. |
 | `test_path_rules` | Rule ids re-checked inside test and example paths. Default: `^personal-`. |
