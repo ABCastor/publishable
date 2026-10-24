@@ -36,6 +36,8 @@ publishable_check() (
   local exempt_rules="$PUBLISHABLE_CONFIG_EXEMPT_RULES"
   local exempt_readme_line="$PUBLISHABLE_CONFIG_EXEMPT_README_LINE_PATTERN"
   local exempt_identities="$PUBLISHABLE_CONFIG_EXEMPT_IDENTITIES"
+  local legal_identity_paths="$PUBLISHABLE_CONFIG_LEGAL_IDENTITY_PATHS"
+  local legal_identity_rules="$PUBLISHABLE_CONFIG_LEGAL_IDENTITY_RULES"
   local checks_dir="${PUBLISHABLE_CONFIG_CHECKS_DIR:-${config_file%/*}/checks.d}"
   local code_roots_raw="${PUBLISHABLE_CODE_ROOTS:-$PUBLISHABLE_CONFIG_CODE_ROOTS}"
 
@@ -394,10 +396,23 @@ publishable_check() (
     fi
   fi
 
-  # Only identity rules can be exempted, never a secret. Arguments: rule [file line commit].
+  # Only explicitly configured name/handle rules can use a marked legal paragraph.
+  # Read the immutable scanned blob, never today's checkout; missing range/blob fails closed.
+  legal_identity_exempt() {
+    case "$1" in personal-name|personal-name-*|personal-*-name|personal-handle|personal-handle-*) ;; *) return 1 ;; esac
+    [ -n "$legal_identity_paths" ] || return 1
+    case " $legal_identity_rules " in *" $1 "*) ;; *) return 1 ;; esac
+    [[ "$4" =~ ^[0-9a-f]{40,64}$ ]] || return 1
+    git -C "$repo" cat-file blob "$4:$2" 2>/dev/null \
+      | perl "$engine_root/lib/legal-identity.pl" "$2" "$legal_identity_paths" "$3" "${5:-}" "${6:-}" "${7:-}" 2>/dev/null
+  }
+
+  # Only identity rules can be exempted, never a secret.
+  # Arguments: rule file start-line commit start-column end-line end-column.
   is_exempt_rule() {
     local file="${2:-}" line="${3:-}" commit="${4:-}"
     case "$1" in personal-*) ;; *) return 1 ;; esac
+    if legal_identity_exempt "$@"; then return 0; fi
     case " $exempt_rules " in
       *" $1 "*) ;;
       *) return 1 ;;
@@ -539,9 +554,9 @@ publishable_check() (
 
     if { [ "$scan_rc" -eq 0 ] || [ "$scan_rc" -eq 1 ]; } \
         && jq -e 'type == "array"' "$gitleaks_report" >/dev/null 2>&1; then
-      while IFS=$'\t' read -r file line commit rule description; do
+      while IFS=$'\t' read -r file line commit rule column end_line end_column description; do
         [ -n "$rule" ] || continue
-        if is_exempt_rule "$rule" "$file" "$line" "$commit"; then
+        if is_exempt_rule "$rule" "$file" "$line" "$commit" "$column" "$end_line" "$end_column"; then
           continue
         elif is_personal_rule "$rule"; then
           personal_blocking=$((personal_blocking + 1))
@@ -557,6 +572,9 @@ publishable_check() (
         ((.StartLine // "n/a") | tostring),
         (.Commit // "unknown"),
         (.RuleID // "unknown"),
+        ((.StartColumn // "n/a") | tostring),
+        ((.EndLine // "n/a") | tostring),
+        ((.EndColumn // "n/a") | tostring),
         (.Description // "Remove or parameterize the flagged value before publishing.")
       ] | @tsv' "$gitleaks_report")
     else
@@ -678,10 +696,10 @@ publishable_check() (
 
   printf '%s\n' "== SECTION 3: PERSONAL_DATA =="
   if [ "$scan_available" -eq 1 ] && jq -e 'type == "array"' "$gitleaks_report" >/dev/null 2>&1; then
-    while IFS=$'\t' read -r file line commit rule description; do
+    while IFS=$'\t' read -r file line commit rule column end_line end_column description; do
       [ -n "$rule" ] || continue
       is_personal_rule "$rule" || continue
-      if is_exempt_rule "$rule" "$file" "$line" "$commit"; then
+      if is_exempt_rule "$rule" "$file" "$line" "$commit" "$column" "$end_line" "$end_column"; then
         printf 'INFO|section=PERSONAL_DATA|file=%s|rule=%s|status=allowed-by-owner-exemption\n' \
           "$(sanitize_field "$file")" "$(sanitize_field "$rule")"
         continue
@@ -693,6 +711,9 @@ publishable_check() (
       ((.StartLine // "n/a") | tostring),
       (.Commit // "unknown"),
       (.RuleID // "unknown"),
+      ((.StartColumn // "n/a") | tostring),
+      ((.EndLine // "n/a") | tostring),
+      ((.EndColumn // "n/a") | tostring),
       (.Description // "Remove or parameterize the personal value before publishing.")
     ] | @tsv' "$gitleaks_report")
   elif [ "$scan_available" -eq 0 ]; then

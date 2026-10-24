@@ -97,8 +97,30 @@ A repository with a sibling named `<name>-data`, `<name>-private` or `<name>-pri
 | `test_path_rules` | Rule ids re-checked inside test and example paths. Default: `^personal-`. |
 | `exempt_owner`, `exempt_rules` | Rules allowed when every GitHub remote belongs to that owner, for example your own name on your own organisation's repositories. One remote elsewhere and they block again. |
 | `exempt_identities` | Further commit identities, `Name <email>` separated by `;`, that may author and commit when every GitHub remote belongs to `exempt_owner`, for example a co-founder on your shared organisation's repositories. Name and email must both match; anywhere else only `author_name` and `author_email` are accepted. |
+| `legal_identity_paths`, `legal_identity_rules` | Opt-in legal-notice paths and name/handle rule ids, separated by spaces. Only findings entirely inside a plain-text `<p data-legal-identity>...</p>` can pass. See below. |
 | `own_identity_pattern` | A regular expression for your identities, used by `publicUpstream` below. |
 | `checks_dir` | Your own checks. Default: `checks.d` next to the config. |
+
+### Legal notices
+
+A privacy notice may need to identify its controller. Configure that permission outside the repository, separately from repository-wide owner exemptions:
+
+```ini
+legal_identity_paths=**/privacy/** **/legal/** **/imprint/** **/terms/** src/notices/privacy.md
+legal_identity_rules=personal-primary-name personal-handle-account
+```
+
+Paths are repository-relative and case-sensitive: `*` and `?` stay within one directory; `**` crosses directories and `**/` can match no directories. Other characters are literal. List source aliases explicitly when their paths differ from the built notice. Both settings default to empty, so adding a marker alone grants nothing.
+
+Use a closed HTML paragraph containing text only, in HTML or Markdown source:
+
+```html
+<p data-legal-identity>The data controller is Example Person.</p>
+```
+
+The permission covers only configured personal name/handle rules (`personal-name`, `personal-name-*`, `personal-*-name`, `personal-handle` or `personal-handle-*`). A rule with another spelling must use one of these names before it can be configured here. Secrets, emails, addresses, denylist findings and other checks remain blocking. A name in another paragraph, an attribute, a comment, a script or a nonlegal path also remains blocking. Nested markup is deliberately unsupported; keep the marked paragraph plain text.
+
+Each finding is judged against its own committed blob and full scanner range, including on minified pages. Marking today's notice cannot authorize an unmarked occurrence in an older commit. Missing ranges, unreadable blobs and malformed markup fail closed. Scanner columns can include a preceding newline; the check requires the wider range to fit, which can conservatively refuse a name immediately against a tag boundary on a later line.
 
 ### Your own checks
 

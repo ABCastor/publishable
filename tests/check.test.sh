@@ -141,6 +141,55 @@ g -c user.name="Co Founder" -c user.email="other@example.org" commit -qm "Same n
 check "$repo"; want_block "an exempt identity must match name and email" AI_ATTRIBUTION public-author-identity-mismatch
 write_config
 
+# --- opt-in legal identity paragraphs --------------------------------------------------
+write_config 'legal_identity_paths=**/privacy/** **/legal/** src/notices/privacy.md' 'legal_identity_rules=personal-primary-name'
+legal_fixture() {
+  mkfix "$1"
+  mkdir -p "$repo/$(dirname "$2")"
+  printf '%s\n' "$3" > "$repo/$2"; commit_all "Notice"
+  check "$repo"
+}
+legal_fixture legal-clean apps/privacy/index.html '<p data-legal-identity>No identifying text.</p>'
+want_clean "legal control passes"
+legal_fixture legal-outside index.html '<p>Example Person</p>'
+want_block "identity outside a legal path blocks" PERSONAL_DATA personal-primary-name
+legal_fixture legal-unmarked apps/privacy/index.html '<p>Example Person</p>'
+want_block "unmarked identity on a legal page blocks" PERSONAL_DATA personal-primary-name
+legal_fixture legal-marked apps/privacy/index.html '<p data-legal-identity>Example Person</p>'
+want_clean "marked identity on a legal path passes"
+legal_fixture legal-nonlegal index.html '<p data-legal-identity>Example Person</p>'
+want_block "marked identity on a nonlegal path blocks" PERSONAL_DATA personal-primary-name
+legal_fixture legal-mixed apps/privacy/index.html '<p data-legal-identity>Example Person</p><p>Example Person</p>'
+want_block "same-line identity outside the marked paragraph still blocks" PERSONAL_DATA personal-primary-name
+legal_fixture legal-history apps/privacy/index.html '<p>Example Person</p>'
+printf '<p data-legal-identity>Example Person</p>\n' > "$repo/apps/privacy/index.html"; commit_all "Mark"
+check "$repo"; want_block "marking the current file never exempts an unmarked historical blob" PERSONAL_DATA personal-primary-name
+legal_fixture legal-source src/notices/privacy.md '<p data-legal-identity>Example Person</p>'
+want_clean "explicit source alias passes"
+legal_fixture legal-unicode apps/privacy/it/index.html '<p data-legal-identity>Il titolare è Example Person, in Italia.</p>'
+want_clean "byte ranges work after multilingual text"
+legal_fixture legal-multiline privacy/index.html $'<p data-legal-identity>\nExample\nPerson\n</p>'
+want_clean "multiline identity range passes only within the text block"
+legal_fixture legal-no-optin apps/privacy/index.html '<p data-legal-identity>Example Person</p>'
+write_config
+check "$repo"; want_block "legal identity is off by default" PERSONAL_DATA personal-primary-name
+write_config 'legal_identity_paths=**/privacy/**' 'legal_identity_rules=personal-primary-name github-pat personal-email'
+legal_fixture legal-secret apps/privacy/index.html "<p data-legal-identity>Example Person token = \"$tok\"</p>"
+want_block "secrets inside the identity block still block" SECRETS github-pat
+legal_fixture legal-email apps/privacy/index.html '<p data-legal-identity>you@example.com</p>'
+want_block "personal email cannot use legal identity permission" PERSONAL_DATA personal-email
+for variant in \
+  '<!-- <p data-legal-identity>Example Person</p> -->' \
+  '<script>const x = "<p data-legal-identity>Example Person</p>";</script>' \
+  '<p data-legal-identity>Example Person' \
+  '<p data-legal-identity><span>Example Person</span></p>' \
+  '<p data-legal-identity title="Example Person">Controller</p>' \
+  '<template><p data-legal-identity>Example Person</p></template>'; do
+  legal_fixture "legal-malformed-$pass" apps/privacy/index.html "$variant"
+  want_block "non-text, malformed or inert identity markup blocks" PERSONAL_DATA personal-primary-name
+done
+write_config
+
 # BR-PUB-HUMAN
 # Incoming history is actually pushed and fetched, not simulated with hand-written refs.
 mk_incoming() {
